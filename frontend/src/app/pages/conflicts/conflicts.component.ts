@@ -103,7 +103,9 @@ export class ConflictsComponent implements OnInit {
     const map: Record<string, string> = {
       'teacher': '教师冲突',
       'classroom': '教室冲突',
-      'class': '班级冲突'
+      'class': '班级冲突',
+      'teacher_daily_limit': '教师每日课时超限',
+      'course_daily_limit': '课程单日节数超限'
     };
     return map[type] || type;
   }

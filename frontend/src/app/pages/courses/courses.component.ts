@@ -65,6 +65,11 @@ const PRIORITIES = [
           </mat-form-field>
 
           <mat-form-field class="full-width-field">
+            <mat-label>同一门课在一个班每天最多排几节（留空表示不限制）</mat-label>
+            <input matInput type="number" min="1" formControlName="max_daily_per_class">
+          </mat-form-field>
+
+          <mat-form-field class="full-width-field">
             <mat-label>适用教室类型</mat-label>
             <mat-select formControlName="preferred_room_type" required>
               <mat-option *ngFor="let t of roomTypes" [value]="t.value">
@@ -103,6 +108,11 @@ const PRIORITIES = [
             <td mat-cell *matCellDef="let item">{{ item.weekly_hours }}</td>
           </ng-container>
 
+          <ng-container matColumnDef="max_daily_per_class">
+            <th mat-header-cell *matHeaderCellDef>每班每天最多</th>
+            <td mat-cell *matCellDef="let item">{{ item.max_daily_per_class ? item.max_daily_per_class + ' 节' : '不限制' }}</td>
+          </ng-container>
+
           <ng-container matColumnDef="preferred_room_type">
             <th mat-header-cell *matHeaderCellDef>适用教室</th>
             <td mat-cell *matCellDef="let item">{{ getRoomTypeLabel(item.preferred_room_type) }}</td>
@@ -138,7 +148,7 @@ const PRIORITIES = [
   `
 })
 export class CoursesComponent implements OnInit {
-  displayedColumns: string[] = ['name', 'weekly_hours', 'preferred_room_type', 'priority', 'is_active', 'actions'];
+  displayedColumns: string[] = ['name', 'weekly_hours', 'max_daily_per_class', 'preferred_room_type', 'priority', 'is_active', 'actions'];
   dataSource: Course[] = [];
   roomTypes = ROOM_TYPES;
   priorities = PRIORITIES;
@@ -154,6 +164,7 @@ export class CoursesComponent implements OnInit {
       id: [null],
       name: ['', Validators.required],
       weekly_hours: [2, [Validators.required, Validators.min(1)]],
+      max_daily_per_class: [null],
       preferred_room_type: ['normal', Validators.required],
       priority: ['medium', Validators.required],
       is_active: [true]
@@ -183,6 +194,7 @@ export class CoursesComponent implements OnInit {
     this.form.reset({
       name: '',
       weekly_hours: 2,
+      max_daily_per_class: null,
       preferred_room_type: 'normal',
       priority: 'medium',
       is_active: true
@@ -206,6 +218,9 @@ export class CoursesComponent implements OnInit {
       return;
     }
     const data = this.form.value;
+    data.max_daily_per_class = data.max_daily_per_class === '' || data.max_daily_per_class === undefined
+      ? null
+      : Number(data.max_daily_per_class);
     if (this.editingId) {
       this.api.updateCourse(this.editingId, data).subscribe(() => {
         this.showForm = false;

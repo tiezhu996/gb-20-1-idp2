@@ -58,6 +58,11 @@ import type { Teacher } from '../../types';
             <input matInput formControlName="email">
           </mat-form-field>
 
+          <mat-form-field class="full-width-field">
+            <mat-label>每天最多上几节课（留空表示不限制）</mat-label>
+            <input matInput type="number" min="1" formControlName="max_daily_lessons">
+          </mat-form-field>
+
           <mat-checkbox formControlName="is_active">启用</mat-checkbox>
 
           <div>
@@ -89,6 +94,11 @@ import type { Teacher } from '../../types';
             <td mat-cell *matCellDef="let item">{{ item.email || '-' }}</td>
           </ng-container>
 
+          <ng-container matColumnDef="max_daily_lessons">
+            <th mat-header-cell *matHeaderCellDef>每天最多节数</th>
+            <td mat-cell *matCellDef="let item">{{ item.max_daily_lessons ? item.max_daily_lessons + ' 节' : '不限制' }}</td>
+          </ng-container>
+
           <ng-container matColumnDef="is_active">
             <th mat-header-cell *matHeaderCellDef>状态</th>
             <td mat-cell *matCellDef="let item">{{ item.is_active ? '启用' : '禁用' }}</td>
@@ -114,7 +124,7 @@ import type { Teacher } from '../../types';
   `
 })
 export class TeachersComponent implements OnInit {
-  displayedColumns: string[] = ['name', 'subject', 'phone', 'email', 'is_active', 'actions'];
+  displayedColumns: string[] = ['name', 'subject', 'max_daily_lessons', 'phone', 'email', 'is_active', 'actions'];
   dataSource: Teacher[] = [];
   showForm = false;
   editingId: number | null = null;
@@ -128,6 +138,7 @@ export class TeachersComponent implements OnInit {
       id: [null],
       name: ['', Validators.required],
       subject: ['', Validators.required],
+      max_daily_lessons: [null],
       phone: [''],
       email: [''],
       available_time_slots: [[]],
@@ -150,6 +161,7 @@ export class TeachersComponent implements OnInit {
     this.form.reset({
       name: '',
       subject: '',
+      max_daily_lessons: null,
       phone: '',
       email: '',
       available_time_slots: [],
@@ -174,6 +186,9 @@ export class TeachersComponent implements OnInit {
       return;
     }
     const data = this.form.value;
+    data.max_daily_lessons = data.max_daily_lessons === '' || data.max_daily_lessons === undefined
+      ? null
+      : Number(data.max_daily_lessons);
     if (this.editingId) {
       this.api.updateTeacher(this.editingId, data).subscribe(() => {
         this.showForm = false;

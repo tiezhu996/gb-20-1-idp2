@@ -15,7 +15,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { ApiService } from '../../services/api.service';
 import type {
-  ScheduleEntry, Semester, Class, Teacher, Classroom
+  ScheduleEntry, Semester, Class, Teacher, Classroom, Course
 } from '../../types';
 
 @Component({
@@ -117,8 +117,8 @@ import type {
               <thead>
                 <tr style="background: #1976d2; color: white;">
                   <th style="padding: 12px; text-align: center; min-width: 100px;">节次</th>
-                  <th *ngFor="let day of weekDays" style="padding: 12px; text-align: center; min-width: 150px;">
-                    {{ day }}
+                  <th *ngFor="let day of weekDayNumbers; let di = index" style="padding: 12px; text-align: center; min-width: 150px;">
+                    {{ weekDays[di] }}
                   </th>
                 </tr>
               </thead>
@@ -128,7 +128,7 @@ import type {
                     {{ period.name }}
                   </td>
                   <td
-                    *ngFor="let day of [1,2,3,4,5]; let di = index"
+                    *ngFor="let day of weekDayNumbers; let di = index"
                     style="padding: 8px; border: 1px solid #ddd; vertical-align: top; min-height: 80px;"
                   >
                     <ng-container *ngFor="let entry of getEntryAt(day, i + 1)">
@@ -136,9 +136,13 @@ import type {
                         class="schedule-card"
                         [class.conflict-entry]="entry.is_conflict"
                         [class.locked-entry]="entry.is_locked"
+                        [class.over-limit-entry]="isOverLimit(entry)"
                         style="margin-bottom: 4px;"
                       >
-                        <div class="schedule-course">{{ entry.course_name }}</div>
+                        <div class="schedule-course" [class.over-limit-text]="isOverLimit(entry)">
+                          {{ entry.course_name }}
+                          <span *ngIf="isOverLimit(entry)" class="over-limit-badge">超上限</span>
+                        </div>
                         <div class="schedule-detail">{{ entry.teacher_name }}</div>
                         <div class="schedule-detail">{{ entry.classroom_name }}</div>
                         <div class="schedule-detail">{{ entry.class_name }}</div>
@@ -160,6 +164,23 @@ import type {
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div *ngIf="viewMode === 'class'" style="padding: 0 16px 16px;">
+            <h4 style="margin: 8px 0;">当天各门课节数统计（红字表示超过该课每天上限）</h4>
+            <div *ngFor="let day of weekDayNumbers; let di = index" class="daily-count-row">
+              <span class="daily-count-day">{{ weekDays[di] }}</span>
+              <ng-container *ngIf="getDailyCourseCounts(day).length > 0; else noLessons">
+                <span
+                  *ngFor="let item of getDailyCourseCounts(day)"
+                  class="daily-count-item"
+                  [class.over-limit-text]="item.limit !== null && item.count > item.limit"
+                >
+                  {{ item.courseName }}：{{ item.count }} 节<ng-container *ngIf="item.limit !== null">（上限 {{ item.limit }}）</ng-container>
+                </span>
+              </ng-container>
+              <ng-template #noLessons><span class="daily-count-empty">当天无课</span></ng-template>
+            </div>
           </div>
         </div>
 
@@ -189,6 +210,7 @@ export class TimetableComponent implements OnInit {
   classes: Class[] = [];
   teachers: Teacher[] = [];
   classrooms: Classroom[] = [];
+  courses: Course[] = [];
   schedules: ScheduleEntry[] = [];
   selectedSemesterId: number | null = null;
   selectedClassId: number | null = null;
@@ -198,7 +220,8 @@ export class TimetableComponent implements OnInit {
   schedulingMessage: string = '';
   currentSemester: Semester | null = null;
 
-  weekDays = ['星期一', '星期二', '星期三', '星期四', '星期五'];
+  weekDays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+  weekDayNumbers = [1, 2, 3, 4, 5];
   periods = [
     { name: '第1节', order: 1 },
     { name: '第2节', order: 2 },
@@ -240,6 +263,13 @@ export class TimetableComponent implements OnInit {
     this.loadClasses();
     this.loadTeachers();
     this.loadClassrooms();
+    this.loadCourses();
+  }
+
+  loadCourses(): void {
+    this.api.getCourses().subscribe(data => {
+      this.courses = data;
+    });
   }
 
   loadSemesters(): void {
@@ -289,6 +319,8 @@ export class TimetableComponent implements OnInit {
         .slice()
         .sort((a, b) => a.order - b.order);
     }
+    const days = Math.min(7, Math.max(1, this.currentSemester?.weekly_days || 5));
+    this.weekDayNumbers = Array.from({ length: days }, (_, i) => i + 1);
   }
 
   onSemesterChange(): void {
@@ -320,6 +352,41 @@ export class TimetableComponent implements OnInit {
 
   getEntryAt(day: number, period: number): ScheduleEntry[] {
     return this.schedules.filter(e => e.day_of_week === day && e.period === period);
+  }
+
+  getCourseLimit(courseId: number): number | null {
+    const c = this.courses.find(x => x.id === courseId);
+    return c && c.max_daily_per_class ? c.max_daily_per_class : null;
+  }
+
+  /** 按班级查看时：统计某一天每门课各排了几节 */
+  getDailyCourseCounts(day: number): { courseId: number; courseName: string; count: number; limit: number | null }[] {
+    const map = new Map<number, number>();
+    for (const e of this.schedules) {
+      if (e.day_of_week !== day) continue;
+      map.set(e.course, (map.get(e.course) || 0) + 1);
+    }
+    const result: { courseId: number; courseName: string; count: number; limit: number | null }[] = [];
+    map.forEach((count, courseId) => {
+      const c = this.courses.find(x => x.id === courseId);
+      result.push({
+        courseId,
+        courseName: c?.name || `课程${courseId}`,
+        count,
+        limit: this.getCourseLimit(courseId)
+      });
+    });
+    return result.sort((a, b) => a.courseName.localeCompare(b.courseName, 'zh'));
+  }
+
+  /** 某张课卡对应的课程当天是否超上限（用于红字标记） */
+  isOverLimit(entry: ScheduleEntry): boolean {
+    if (this.viewMode !== 'class') return false;
+    const limit = this.getCourseLimit(entry.course);
+    if (limit === null) return false;
+    return this.schedules.filter(
+      e => e.day_of_week === entry.day_of_week && e.course === entry.course
+    ).length > limit;
   }
 
   runAutoSchedule(respectLocked = true): void {

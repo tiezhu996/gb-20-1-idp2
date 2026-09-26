@@ -16,6 +16,7 @@ from .serializers import (
     SwapScheduleRequestSerializer, SubstituteRequestSerializer
 )
 from .csp_solver import CSPScheduler, ConflictDetector, SchedulingTask, TimeSlot
+from .limits import check_swap, check_substitute
 from .pdf_export import (
     generate_class_timetable_pdf,
     generate_teacher_timetable_pdf,
@@ -104,17 +105,39 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        locked_entries = []
+        locked_counts = {}
+        if respect_locked:
+            locked = ScheduleEntry.objects.filter(
+                semester=semester, is_locked=True
+            ).values(
+                'id', 'class_id', 'teacher_id', 'course_id', 'classroom_id',
+                'day_of_week', 'period', 'is_locked'
+            )
+            locked_entries = list(locked)
+            # 锁定课留在原处，并计入对应课程的周课时，避免重复排
+            for le in locked_entries:
+                key = (le['class_id'], le['course_id'], le['teacher_id'])
+                locked_counts[key] = locked_counts.get(key, 0) + 1
+
         tasks = []
         for cc in class_courses:
+            locked_hours = locked_counts.get((cc.class_id.id, cc.course.id, cc.teacher.id), 0)
+            remaining_hours = max(0, cc.course.weekly_hours - locked_hours)
             tasks.append(SchedulingTask(
                 class_id=cc.class_id.id,
                 course_id=cc.course.id,
                 teacher_id=cc.teacher.id,
-                weekly_hours=cc.course.weekly_hours,
+                weekly_hours=remaining_hours,
                 preferred_room_type=cc.course.preferred_room_type,
                 priority=cc.course.priority,
                 available_time_slots=[],
-                classroom_capacity=cc.class_id.student_count or 40
+                classroom_capacity=cc.class_id.student_count or 40,
+                max_daily_per_class=cc.course.max_daily_per_class,
+                course_name=cc.course.name,
+                class_name=cc.class_id.name,
+                locked_hours=locked_hours,
+                total_weekly_hours=cc.course.weekly_hours
             ))
 
         classrooms_data = {
@@ -128,19 +151,10 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
         teachers_data = {
             t.id: {
                 'name': t.name,
+                'max_daily_lessons': t.max_daily_lessons,
                 'available_time_slots': t.available_time_slots if t.available_time_slots else []
             } for t in Teacher.objects.filter(is_active=True)
         }
-
-        locked_entries = []
-        if respect_locked:
-            locked = ScheduleEntry.objects.filter(
-                semester=semester, is_locked=True
-            ).values(
-                'id', 'class_id', 'teacher_id', 'classroom_id',
-                'day_of_week', 'period', 'is_locked'
-            )
-            locked_entries = list(locked)
 
         scheduler = CSPScheduler(semester)
         assignments, scheduling_conflicts = scheduler.schedule(
@@ -173,7 +187,7 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
 
             all_entries = ScheduleEntry.objects.filter(
                 semester=semester
-            ).values('id', 'teacher_id', 'classroom_id', 'class_id', 'day_of_week', 'period')
+            ).values('id', 'teacher_id', 'course_id', 'classroom_id', 'class_id', 'day_of_week', 'period')
 
             detector = ConflictDetector()
             conflicts = detector.detect_conflicts(list(all_entries))
@@ -220,7 +234,7 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
         semester_id = req_serializer.validated_data['semester_id']
         entries = ScheduleEntry.objects.filter(
             semester_id=semester_id
-        ).values('id', 'teacher_id', 'classroom_id', 'class_id', 'day_of_week', 'period')
+        ).values('id', 'teacher_id', 'course_id', 'classroom_id', 'class_id', 'day_of_week', 'period')
 
         detector = ConflictDetector()
         conflicts = detector.detect_conflicts(list(entries))
@@ -238,12 +252,33 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
         reason = req_serializer.validated_data.get('reason', '')
 
         try:
-            entry1 = ScheduleEntry.objects.get(id=entry1_id)
-            entry2 = ScheduleEntry.objects.get(id=entry2_id)
+            entry1 = ScheduleEntry.objects.select_related(
+                'course', 'teacher', 'class_id'
+            ).get(id=entry1_id)
+            entry2 = ScheduleEntry.objects.select_related(
+                'course', 'teacher', 'class_id'
+            ).get(id=entry2_id)
         except ScheduleEntry.DoesNotExist:
             return Response(
                 {'error': 'One or both entries not found'},
                 status=status.HTTP_404_NOT_FOUND
+            )
+
+        if entry1.semester_id != entry2.semester_id:
+            return Response(
+                {'error': '两节课不属于同一学期，不能调课', 'violations': []},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 调课前按每日上限再核一遍，越界则整笔不动
+        violations = check_swap(entry1, entry2)
+        if violations:
+            return Response(
+                {
+                    'error': '调课后会突破每日上课上限，已取消本次调课，课程未移动',
+                    'violations': violations
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         with transaction.atomic():
@@ -267,7 +302,11 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
                     status='approved'
                 )
 
-        return Response({'status': 'success', 'message': 'Swap completed'})
+        return Response({
+            'status': 'success',
+            'message': 'Swap completed',
+            'violations': []
+        })
 
     @action(detail=False, methods=['post'])
     def substitute(self, request):
@@ -282,7 +321,9 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
         reason = req_serializer.validated_data['reason']
 
         try:
-            entry = ScheduleEntry.objects.get(id=entry_id)
+            entry = ScheduleEntry.objects.select_related(
+                'course', 'teacher', 'class_id'
+            ).get(id=entry_id)
             substitute_teacher = Teacher.objects.get(id=substitute_teacher_id)
         except (ScheduleEntry.DoesNotExist, Teacher.DoesNotExist):
             return Response(
@@ -291,6 +332,17 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
             )
 
         original_teacher = entry.teacher
+
+        # 代课只换教师，按新教师当天上限核一遍，越界则整笔不动
+        violations = check_substitute(entry, substitute_teacher)
+        if violations:
+            return Response(
+                {
+                    'error': '代课会突破每日上课上限，本次代课未生效',
+                    'violations': violations
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         with transaction.atomic():
             Substitute.objects.create(
@@ -308,7 +360,7 @@ class ScheduleEntryViewSet(viewsets.ModelViewSet):
             entry.save()
 
         serializer = ScheduleEntryDetailSerializer(entry)
-        return Response({'status': 'success', 'entry': serializer.data})
+        return Response({'status': 'success', 'entry': serializer.data, 'violations': []})
 
     @action(detail=False, methods=['get'])
     def export_pdf(self, request):

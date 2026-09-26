@@ -15,6 +15,7 @@ export interface Teacher {
   subject: string;
   phone?: string;
   email?: string;
+  max_daily_lessons?: number | null;
   available_time_slots: { day: number; period: number }[];
   is_active: boolean;
   created_at?: string;
@@ -37,6 +38,7 @@ export interface Course {
   id: number;
   name: string;
   weekly_hours: number;
+  max_daily_per_class?: number | null;
   preferred_room_type: 'normal' | 'lab' | 'multimedia';
   priority: 'high' | 'medium' | 'low';
   is_active: boolean;
@@ -94,7 +96,7 @@ export interface ScheduleEntry {
 export interface Conflict {
   id: number;
   semester: number;
-  conflict_type: 'teacher' | 'classroom' | 'class';
+  conflict_type: 'teacher' | 'classroom' | 'class' | 'teacher_daily_limit' | 'course_daily_limit';
   day_of_week: number;
   period: number;
   involved_entries: number[];

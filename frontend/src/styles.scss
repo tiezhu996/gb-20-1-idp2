@@ -67,6 +67,53 @@ mat-sidenav {
   border-left: 4px solid #f44336;
 }
 
+.over-limit-entry {
+  outline: 2px solid #d32f2f;
+}
+
+.over-limit-text {
+  color: #d32f2f;
+  font-weight: 700;
+}
+
+.over-limit-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  color: white;
+  background: #d32f2f;
+  border-radius: 9px;
+  vertical-align: middle;
+}
+
+.daily-count-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #e0e0e0;
+}
+
+.daily-count-day {
+  min-width: 64px;
+  font-weight: 700;
+  color: #333;
+}
+
+.daily-count-item {
+  font-size: 13px;
+  color: #333;
+}
+
+.daily-count-empty {
+  font-size: 13px;
+  color: #999;
+}
+
 .locked-entry {
   background-color: #fff9c4 !important;
   border-left: 4px solid #fbc02d;

@@ -28,6 +28,10 @@ class Teacher(models.Model):
     subject = models.CharField(max_length=100)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
+    max_daily_lessons = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='每天最多上几节课，留空表示不限制'
+    )
     available_time_slots = models.JSONField(default=list, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -81,6 +85,10 @@ class Course(models.Model):
 
     name = models.CharField(max_length=100)
     weekly_hours = models.IntegerField(help_text='每周课时数')
+    max_daily_per_class = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='同一门课在一个班每天最多排几节，留空表示不限制'
+    )
     preferred_room_type = models.CharField(
         max_length=20,
         choices=Classroom.CLASSROOM_TYPES,

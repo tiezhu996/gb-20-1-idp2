@@ -50,10 +50,12 @@ class Conflict(models.Model):
         ('teacher', '教师冲突'),
         ('classroom', '教室冲突'),
         ('class', '班级冲突'),
+        ('teacher_daily_limit', '教师每日课时超限'),
+        ('course_daily_limit', '课程单日节数超限'),
     ]
 
     semester = models.ForeignKey(Semester, on_delete=models.CASCADE)
-    conflict_type = models.CharField(max_length=20, choices=CONFLICT_TYPES)
+    conflict_type = models.CharField(max_length=30, choices=CONFLICT_TYPES)
     day_of_week = models.IntegerField()
     period = models.IntegerField()
     involved_entries = models.JSONField(default=list)
