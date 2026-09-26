@@ -16,6 +16,7 @@ export interface Teacher {
   phone?: string;
   email?: string;
   available_time_slots: { day: number; period: number }[];
+  max_daily_lessons?: number | null;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
@@ -39,6 +40,7 @@ export interface Course {
   weekly_hours: number;
   preferred_room_type: 'normal' | 'lab' | 'multimedia';
   priority: 'high' | 'medium' | 'low';
+  max_daily_per_class?: number | null;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
@@ -87,6 +89,8 @@ export interface ScheduleEntry {
   teacher_name?: string;
   classroom_name?: string;
   class_name?: string;
+  teacher_max_daily?: number | null;
+  course_max_daily?: number | null;
   created_at?: string;
   updated_at?: string;
 }

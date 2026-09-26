@@ -128,7 +128,7 @@ import type {
                     {{ period.name }}
                   </td>
                   <td
-                    *ngFor="let day of [1,2,3,4,5]; let di = index"
+                    *ngFor="let day of weekDayNumbers; let di = index"
                     style="padding: 8px; border: 1px solid #ddd; vertical-align: top; min-height: 80px;"
                   >
                     <ng-container *ngFor="let entry of getEntryAt(day, i + 1)">
@@ -136,15 +136,24 @@ import type {
                         class="schedule-card"
                         [class.conflict-entry]="entry.is_conflict"
                         [class.locked-entry]="entry.is_locked"
+                        [class.over-limit-entry]="viewMode === 'class' && isCourseOverLimit(entry, day)"
                         style="margin-bottom: 4px;"
                       >
                         <div class="schedule-course">{{ entry.course_name }}</div>
                         <div class="schedule-detail">{{ entry.teacher_name }}</div>
                         <div class="schedule-detail">{{ entry.classroom_name }}</div>
                         <div class="schedule-detail">{{ entry.class_name }}</div>
+                        <div *ngIf="viewMode === 'class'" class="daily-count"
+                             [class.over-limit]="isCourseOverLimit(entry, day)">
+                          当天 {{ courseDailyCount(entry.course, day) }} 节
+                          <ng-container *ngIf="entry.course_max_daily">
+                            / 上限 {{ entry.course_max_daily }} 节
+                          </ng-container>
+                        </div>
                         <div style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap;">
                           <mat-chip *ngIf="entry.is_locked" color="accent" selected>锁定</mat-chip>
                           <mat-chip *ngIf="entry.is_conflict" color="warn" selected>冲突</mat-chip>
+                          <mat-chip *ngIf="viewMode === 'class' && isCourseOverLimit(entry, day)" color="warn" selected>超上限</mat-chip>
                           <button
                             mat-icon-button
                             size="small"
@@ -160,6 +169,35 @@ import type {
                 </tr>
               </tbody>
             </table>
+
+            <!-- 按班级查看：每门课每天排了几节，超出上限红字标出 -->
+            <div *ngIf="viewMode === 'class'" class="daily-summary">
+              <h4>每门课当天节数统计</h4>
+              <table class="daily-summary-table mat-elevation-z2">
+                <thead>
+                  <tr>
+                    <th style="background: #1976d2; color: white;">课程</th>
+                    <th *ngFor="let day of weekDayNumbers" style="background: #1976d2; color: white;">
+                      {{ weekDays[day - 1] }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let row of dailySummary">
+                    <td class="summary-course">{{ row.courseName }}</td>
+                    <td *ngFor="let day of weekDayNumbers"
+                        class="summary-count"
+                        [class.over-limit]="isCountOverLimit(row.counts[day] || 0, row.maxDaily)">
+                      <ng-container *ngIf="(row.counts[day] || 0) > 0">
+                        {{ row.counts[day] }} 节
+                        <span *ngIf="row.maxDaily" class="summary-limit">/ 限 {{ row.maxDaily }}</span>
+                      </ng-container>
+                      <span *ngIf="(row.counts[day] || 0) === 0" class="summary-empty">-</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -198,7 +236,7 @@ export class TimetableComponent implements OnInit {
   schedulingMessage: string = '';
   currentSemester: Semester | null = null;
 
-  weekDays = ['星期一', '星期二', '星期三', '星期四', '星期五'];
+  weekDays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
   periods = [
     { name: '第1节', order: 1 },
     { name: '第2节', order: 2 },
@@ -208,6 +246,48 @@ export class TimetableComponent implements OnInit {
     { name: '第6节', order: 6 },
     { name: '第7节', order: 7 },
   ];
+
+  get weekDayNumbers(): number[] {
+    const days = this.currentSemester?.weekly_days || 5;
+    return Array.from({ length: Math.min(Math.max(days, 1), 7) }, (_, i) => i + 1);
+  }
+
+  /** 按班级查看时，每门课在一周各天的节数及上限 */
+  get dailySummary(): { courseId: number; courseName: string; maxDaily: number | null; counts: { [day: number]: number } }[] {
+    const courseMap = new Map<number, { courseName: string; maxDaily: number | null; counts: { [day: number]: number } }>();
+    for (const e of this.schedules) {
+      if (!courseMap.has(e.course)) {
+        courseMap.set(e.course, {
+          courseName: e.course_name || `课程${e.course}`,
+          maxDaily: e.course_max_daily ?? null,
+          counts: {}
+        });
+      }
+      const row = courseMap.get(e.course)!;
+      if (row.maxDaily === null && e.course_max_daily != null) {
+        row.maxDaily = e.course_max_daily;
+      }
+      row.counts[e.day_of_week] = (row.counts[e.day_of_week] || 0) + 1;
+    }
+    return Array.from(courseMap.entries())
+      .map(([courseId, v]) => ({ courseId, ...v }))
+      .sort((a, b) => a.courseName.localeCompare(b.courseName, 'zh'));
+  }
+
+  courseDailyCount(courseId: number, day: number): number {
+    return this.schedules.filter(e => e.course === courseId && e.day_of_week === day).length;
+  }
+
+  isCountOverLimit(count: number, maxDaily: number | null | undefined): boolean {
+    return maxDaily != null && count > maxDaily;
+  }
+
+  isCourseOverLimit(entry: ScheduleEntry, day: number): boolean {
+    return this.isCountOverLimit(
+      this.courseDailyCount(entry.course, day),
+      entry.course_max_daily
+    );
+  }
 
   get canExport(): boolean {
     if (!this.selectedSemesterId) return false;
@@ -326,20 +406,34 @@ export class TimetableComponent implements OnInit {
     if (!this.selectedSemesterId) return;
     this.schedulingMessage = '正在自动排课，请稍候...';
 
-    this.api.autoSchedule(this.selectedSemesterId, respectLocked).subscribe(result => {
-      const total = result.total_entries || 0;
-      const conflicts = (result.conflicts || []).length;
-      const messages = result.scheduling_messages || [];
+    this.api.autoSchedule(this.selectedSemesterId, respectLocked).subscribe({
+      next: (result) => {
+        const total = result.total_entries || 0;
+        const conflicts = (result.conflicts || []).length;
+        const messages = result.scheduling_messages || [];
 
-      let msg = `排课完成！共安排 ${total} 节课`;
-      if (conflicts > 0) {
-        msg += `，发现 ${conflicts} 个冲突`;
+        let msg = `排课完成！共安排 ${total} 节课`;
+        if (conflicts > 0) {
+          msg += `，发现 ${conflicts} 个冲突`;
+        }
+        if (messages.length > 0) {
+          msg += `。以下课时受每日上限或时间冲突限制未能排入，未硬挤：${messages.map((m: any) => m.message).join('；')}`;
+        }
+        const limitViolations: string[] = result.limit_violations || [];
+        if (limitViolations.length > 0) {
+          msg += `。课表中仍存在超出每日上限的课程（多为锁定课）：${limitViolations.join('；')}`;
+        }
+        this.schedulingMessage = msg;
+        this.loadSchedules();
+      },
+      error: (err) => {
+        const data = err?.error;
+        if (data?.violations) {
+          this.schedulingMessage = `${data.error || '操作被拒绝'}：${data.violations.join('；')}。${data.detail || ''}`;
+        } else {
+          this.schedulingMessage = '排课失败，请稍后重试';
+        }
       }
-      if (messages.length > 0) {
-        msg += `。提示: ${messages.map((m: any) => m.message).join('; ')}`;
-      }
-      this.schedulingMessage = msg;
-      this.loadSchedules();
     });
   }
 

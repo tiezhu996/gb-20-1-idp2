@@ -82,6 +82,11 @@ const PRIORITIES = [
             </mat-select>
           </mat-form-field>
 
+          <mat-form-field class="full-width-field">
+            <mat-label>同一门课每班每天最多节数（留空表示不限制）</mat-label>
+            <input matInput type="number" min="1" formControlName="max_daily_per_class">
+          </mat-form-field>
+
           <mat-checkbox formControlName="is_active">启用</mat-checkbox>
 
           <div>
@@ -113,6 +118,13 @@ const PRIORITIES = [
             <td mat-cell *matCellDef="let item">{{ getPriorityLabel(item.priority) }}</td>
           </ng-container>
 
+          <ng-container matColumnDef="max_daily_per_class">
+            <th mat-header-cell *matHeaderCellDef>每班每天最多</th>
+            <td mat-cell *matCellDef="let item">
+              {{ item.max_daily_per_class ? item.max_daily_per_class + ' 节' : '不限' }}
+            </td>
+          </ng-container>
+
           <ng-container matColumnDef="is_active">
             <th mat-header-cell *matHeaderCellDef>状态</th>
             <td mat-cell *matCellDef="let item">{{ item.is_active ? '启用' : '禁用' }}</td>
@@ -138,7 +150,7 @@ const PRIORITIES = [
   `
 })
 export class CoursesComponent implements OnInit {
-  displayedColumns: string[] = ['name', 'weekly_hours', 'preferred_room_type', 'priority', 'is_active', 'actions'];
+  displayedColumns: string[] = ['name', 'weekly_hours', 'preferred_room_type', 'priority', 'max_daily_per_class', 'is_active', 'actions'];
   dataSource: Course[] = [];
   roomTypes = ROOM_TYPES;
   priorities = PRIORITIES;
@@ -156,6 +168,7 @@ export class CoursesComponent implements OnInit {
       weekly_hours: [2, [Validators.required, Validators.min(1)]],
       preferred_room_type: ['normal', Validators.required],
       priority: ['medium', Validators.required],
+      max_daily_per_class: [null, Validators.min(1)],
       is_active: [true]
     });
   }
@@ -185,6 +198,7 @@ export class CoursesComponent implements OnInit {
       weekly_hours: 2,
       preferred_room_type: 'normal',
       priority: 'medium',
+      max_daily_per_class: null,
       is_active: true
     });
     this.showForm = true;
@@ -206,6 +220,8 @@ export class CoursesComponent implements OnInit {
       return;
     }
     const data = this.form.value;
+    // 留空（或 0）表示不限制
+    data.max_daily_per_class = data.max_daily_per_class ? Number(data.max_daily_per_class) : null;
     if (this.editingId) {
       this.api.updateCourse(this.editingId, data).subscribe(() => {
         this.showForm = false;

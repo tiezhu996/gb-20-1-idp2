@@ -31,6 +31,12 @@ class ScheduleEntryDetailSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.name', read_only=True)
     classroom_name = serializers.CharField(source='classroom.name', read_only=True)
     class_name = serializers.CharField(source='class_id.name', read_only=True)
+    teacher_max_daily = serializers.IntegerField(
+        source='teacher.max_daily_lessons', read_only=True, allow_null=True
+    )
+    course_max_daily = serializers.IntegerField(
+        source='course.max_daily_per_class', read_only=True, allow_null=True
+    )
     original_teacher_name = serializers.CharField(
         source='original_teacher.name', read_only=True, allow_null=True
     )

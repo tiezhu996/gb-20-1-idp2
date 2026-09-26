@@ -1,3 +1,4 @@
+from django.core.validators import MinValueValidator
 from django.db import models
 
 
@@ -29,6 +30,11 @@ class Teacher(models.Model):
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
     available_time_slots = models.JSONField(default=list, blank=True)
+    max_daily_lessons = models.PositiveIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1)],
+        help_text='每天最多上几节课，留空表示不限制'
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -87,6 +93,11 @@ class Course(models.Model):
         default='normal'
     )
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    max_daily_per_class = models.PositiveIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(1)],
+        help_text='同一门课在一个班每天最多排几节，留空表示不限制'
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
